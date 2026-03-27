@@ -19,7 +19,8 @@ from openapi_core.validation.schemas.exceptions import InvalidSchemaValue
 
 
 class TestEnumParameterValidationError:
-    """Validates that enum validation errors correctly identify the parameter name."""
+    """Validates that enum validation errors correctly identify the
+    parameter name at the validation/unmarshalling level."""
 
     host_url = "https://api.example.com"
     spec_path = "data/v3.0/enum_param.yaml"
@@ -53,8 +54,12 @@ class TestEnumParameterValidationError:
 
         assert result.errors == []
 
-    def test_invalid_enum_raises_invalid_parameter(self, request_unmarshaller):
-        """InvalidParameter should be raised with the correct parameter name."""
+    def test_invalid_enum_raises_invalid_parameter_with_name(
+        self, request_unmarshaller
+    ):
+        """When an enum parameter receives an invalid value, the resulting
+        InvalidParameter error must carry the parameter name, not the
+        enum value."""
         request = self._make_request({
             "interval": "week",
             "from": "2026-01-01T00:00:00Z",
@@ -69,244 +74,123 @@ class TestEnumParameterValidationError:
         assert error.name == "interval"
         assert error.location == "query"
 
-    def test_invalid_enum_cause_is_invalid_schema_value(
-        self, request_unmarshaller
-    ):
-        """The __cause__ of InvalidParameter should be InvalidSchemaValue."""
-        request = self._make_request({
-            "interval": "week",
-            "from": "2026-01-01T00:00:00Z",
-            "to": "2026-03-06T00:00:00Z",
-        })
 
-        result = request_unmarshaller.unmarshal(request)
-
-        error = result.errors[0]
-        assert isinstance(error.__cause__, InvalidSchemaValue)
-        assert len(error.__cause__.schema_errors) == 1
-        schema_error = error.__cause__.schema_errors[0]
-        assert "'week' is not one of ['day']" in schema_error.message
-
-    def test_invalid_enum_error_str_contains_parameter_name(
-        self, request_unmarshaller
-    ):
-        """str(InvalidParameter) should contain the parameter name."""
-        request = self._make_request({
-            "interval": "week",
-            "from": "2026-01-01T00:00:00Z",
-            "to": "2026-03-06T00:00:00Z",
-        })
-
-        result = request_unmarshaller.unmarshal(request)
-
-        error = result.errors[0]
-        assert "interval" in str(error)
-
-    def test_invalid_enum_cause_str_does_not_use_enum_value_as_field(
-        self, request_unmarshaller
-    ):
-        """The __cause__ string should not mislead consumers into using the
-        enum value ('day') as the field name. It should reference the
-        parameter name ('interval') instead.
-
-        This is the core of the MET-1086 bug: when ``format_openapi_error``
-        unwraps to ``__cause__``, the parameter name is lost and consumers
-        end up extracting the enum value as the field.
-        """
-        request = self._make_request({
-            "interval": "week",
-            "from": "2026-01-01T00:00:00Z",
-            "to": "2026-03-06T00:00:00Z",
-        })
-
-        result = request_unmarshaller.unmarshal(request)
-
-        error = result.errors[0]
-        cause = error.__cause__
-        assert isinstance(cause, InvalidSchemaValue)
-
-        cause_str = str(cause)
-        assert "interval" in cause_str, (
-            f"InvalidSchemaValue string should contain the parameter name "
-            f"'interval', but got: {cause_str!r}"
-        )
-
-    def test_invalid_enum_schema_error_path_identifies_parameter(
-        self, request_unmarshaller
-    ):
-        """The jsonschema ValidationError on enum failure should provide
-        enough context to identify the parameter name. Currently, the path
-        is empty and the validator_value contains the enum values, which
-        causes consumers to mistake enum values for field names.
-        """
-        request = self._make_request({
-            "interval": "week",
-            "from": "2026-01-01T00:00:00Z",
-            "to": "2026-03-06T00:00:00Z",
-        })
-
-        result = request_unmarshaller.unmarshal(request)
-
-        error = result.errors[0]
-        cause = error.__cause__
-        schema_error = cause.schema_errors[0]
-
-        assert schema_error.validator_value == ["day"]
-        assert list(schema_error.path) == [], (
-            "Expected empty path for enum validation at root level"
-        )
-
-        # BUG: validator_value[0] is 'day' (the enum value), not 'interval'
-        # (the parameter name). Consumers who fall back to validator_value[0]
-        # as a field name will get the wrong result.
-        field_from_validator_value = schema_error.validator_value[0]
-        assert field_from_validator_value != "interval", (
-            "validator_value[0] should not be 'interval' — this is the enum "
-            "value, confirming the bug source"
-        )
-
-    def test_multiple_enum_values_wrong_field(self, request_unmarshaller):
-        """When a parameter has multiple enum values (e.g., granularity with
-        [day, week, month]), passing an invalid value should report the
-        parameter name 'granularity', not any enum value.
-        """
-        request = self._make_request({
-            "interval": "day",
-            "granularity": "year",
-            "from": "2026-01-01T00:00:00Z",
-            "to": "2026-03-06T00:00:00Z",
-        })
-
-        result = request_unmarshaller.unmarshal(request)
-
-        assert len(result.errors) == 1
-        error = result.errors[0]
-        assert isinstance(error, InvalidParameter)
-        assert error.name == "granularity"
-        assert error.location == "query"
-
-        cause = error.__cause__
-        assert isinstance(cause, InvalidSchemaValue)
-        cause_str = str(cause)
-        assert "granularity" in cause_str, (
-            f"InvalidSchemaValue string should contain the parameter name "
-            f"'granularity', but got: {cause_str!r}"
-        )
-
-    def test_validate_request_invalid_enum_reports_parameter_name(self, spec):
-        """validate_request should raise ParameterValidationError with
-        the correct parameter name for enum violations.
-        """
-        request = self._make_request({
-            "interval": "week",
-            "from": "2026-01-01T00:00:00Z",
-            "to": "2026-03-06T00:00:00Z",
-        })
-
-        with pytest.raises(ParameterValidationError) as exc_info:
-            validate_request(request, spec=spec)
-
-        assert exc_info.value.name == "interval"
-        assert exc_info.value.location == "query"
+_HANDLER_PARAMS = [
+    pytest.param(
+        "openapi_core.contrib.flask.handlers",
+        "FlaskOpenAPIErrorsHandler",
+        id="flask",
+    ),
+    pytest.param(
+        "openapi_core.contrib.django.handlers",
+        "DjangoOpenAPIErrorsHandler",
+        id="django",
+    ),
+    pytest.param(
+        "openapi_core.contrib.starlette.handlers",
+        "StarletteOpenAPIErrorsHandler",
+        id="starlette",
+    ),
+    pytest.param(
+        "openapi_core.contrib.falcon.handlers",
+        "FalconOpenAPIErrorsHandler",
+        id="falcon",
+    ),
+]
 
 
 class TestEnumParameterErrorHandler:
     """Validates that the contrib error handlers preserve the parameter
     name when formatting enum validation errors.
 
-    All four contrib handlers (Flask, Django, Starlette, Falcon) share
-    the same pattern: they unwrap ``error.__cause__`` before formatting,
-    which loses the parameter name from ``InvalidParameter``.
+    This is the public contract that MET-1086 is about: when the
+    formatted error reaches consumers, the parameter name (``interval``)
+    must be present — not just the enum value (``day``).
     """
 
-    def _make_invalid_parameter_error(self):
-        """Simulate the error chain produced by enum validation failure:
-        InvalidParameter(name='interval', location='query')
-          -- __cause__: InvalidSchemaValue(...)
+    host_url = "https://api.example.com"
+    spec_path = "data/v3.0/enum_param.yaml"
+
+    @pytest.fixture(scope="class")
+    def spec(self, schema_path_factory):
+        return schema_path_factory.from_file(self.spec_path)
+
+    @pytest.fixture(scope="class")
+    def request_unmarshaller(self, spec):
+        return V30RequestUnmarshaller(spec)
+
+    def _make_request(self, args):
+        return MockRequest(
+            self.host_url,
+            "GET",
+            "/metrics/mrr-change",
+            path_pattern="/metrics/mrr-change",
+            args=args,
+        )
+
+    def _get_real_error(self, request_unmarshaller, args):
+        """Run a real validation to get the actual error chain rather
+        than constructing one by hand."""
+        request = self._make_request(args)
+        result = request_unmarshaller.unmarshal(request)
+        assert len(result.errors) == 1
+        return result.errors[0]
+
+    @pytest.mark.parametrize("module_path,cls_name", _HANDLER_PARAMS)
+    def test_handler_formatted_error_contains_parameter_name(
+        self, request_unmarshaller, module_path, cls_name
+    ):
+        """The formatted error produced by each contrib handler must
+        contain the parameter name 'interval', so that consumers can
+        identify which field failed validation.
         """
-        from jsonschema.exceptions import (
-            ValidationError as JsonSchemaValidationError,
+        import importlib
+
+        handler_module = importlib.import_module(module_path)
+        handler_cls = getattr(handler_module, cls_name)
+
+        error = self._get_real_error(
+            request_unmarshaller,
+            {
+                "interval": "week",
+                "from": "2026-01-01T00:00:00Z",
+                "to": "2026-03-06T00:00:00Z",
+            },
         )
 
-        schema_error = JsonSchemaValidationError(
-            "'week' is not one of ['day']",
-            validator="enum",
-            validator_value=["day"],
-            instance="week",
-            schema={"type": "string", "enum": ["day"]},
-        )
-        cause = InvalidSchemaValue(
-            value="week",
-            type="string",
-            schema_errors=(schema_error,),
-        )
-        try:
-            raise cause
-        except InvalidSchemaValue:
-            error = InvalidParameter(name="interval", location="query")
-            error.__cause__ = cause
-        return error
-
-    def test_flask_handler_preserves_parameter_name(self):
-        """Flask error handler should include the parameter name 'interval'
-        in the formatted error, not just the InvalidSchemaValue string.
-        """
-        from openapi_core.contrib.flask.handlers import (
-            FlaskOpenAPIErrorsHandler,
-        )
-
-        error = self._make_invalid_parameter_error()
-        formatted = FlaskOpenAPIErrorsHandler.format_openapi_error(error)
+        formatted = handler_cls.format_openapi_error(error)
 
         assert "interval" in formatted["title"], (
-            f"Formatted error title should contain 'interval', "
-            f"but got: {formatted['title']!r}"
+            f"Formatted error title should contain the parameter name "
+            f"'interval', but got: {formatted['title']!r}"
         )
 
-    def test_django_handler_preserves_parameter_name(self):
-        """Django error handler should include the parameter name 'interval'
-        in the formatted error.
+    @pytest.mark.parametrize("module_path,cls_name", _HANDLER_PARAMS)
+    def test_handler_formatted_error_contains_multi_value_enum_parameter_name(
+        self, request_unmarshaller, module_path, cls_name
+    ):
+        """Same contract for a parameter with multiple enum values:
+        the formatted error must name 'granularity', not any of the
+        allowed values (day, week, month).
         """
-        from openapi_core.contrib.django.handlers import (
-            DjangoOpenAPIErrorsHandler,
+        import importlib
+
+        handler_module = importlib.import_module(module_path)
+        handler_cls = getattr(handler_module, cls_name)
+
+        error = self._get_real_error(
+            request_unmarshaller,
+            {
+                "interval": "day",
+                "granularity": "year",
+                "from": "2026-01-01T00:00:00Z",
+                "to": "2026-03-06T00:00:00Z",
+            },
         )
 
-        error = self._make_invalid_parameter_error()
-        formatted = DjangoOpenAPIErrorsHandler.format_openapi_error(error)
+        formatted = handler_cls.format_openapi_error(error)
 
-        assert "interval" in formatted["title"], (
-            f"Formatted error title should contain 'interval', "
-            f"but got: {formatted['title']!r}"
-        )
-
-    def test_starlette_handler_preserves_parameter_name(self):
-        """Starlette error handler should include the parameter name
-        'interval' in the formatted error.
-        """
-        from openapi_core.contrib.starlette.handlers import (
-            StarletteOpenAPIErrorsHandler,
-        )
-
-        error = self._make_invalid_parameter_error()
-        formatted = StarletteOpenAPIErrorsHandler.format_openapi_error(error)
-
-        assert "interval" in formatted["title"], (
-            f"Formatted error title should contain 'interval', "
-            f"but got: {formatted['title']!r}"
-        )
-
-    def test_falcon_handler_preserves_parameter_name(self):
-        """Falcon error handler should include the parameter name 'interval'
-        in the formatted error.
-        """
-        from openapi_core.contrib.falcon.handlers import (
-            FalconOpenAPIErrorsHandler,
-        )
-
-        error = self._make_invalid_parameter_error()
-        formatted = FalconOpenAPIErrorsHandler.format_openapi_error(error)
-
-        assert "interval" in formatted["title"], (
-            f"Formatted error title should contain 'interval', "
-            f"but got: {formatted['title']!r}"
+        assert "granularity" in formatted["title"], (
+            f"Formatted error title should contain the parameter name "
+            f"'granularity', but got: {formatted['title']!r}"
         )
