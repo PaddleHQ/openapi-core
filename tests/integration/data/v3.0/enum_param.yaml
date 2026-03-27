@@ -1,0 +1,52 @@
+openapi: "3.0.0"
+info:
+  title: Enum parameter test
+  version: "0.1"
+servers:
+  - url: https://api.example.com
+paths:
+  /metrics/mrr-change:
+    get:
+      summary: Get MRR change metrics
+      operationId: getMrrChange
+      parameters:
+        - name: interval
+          in: query
+          required: true
+          schema:
+            type: string
+            enum:
+              - day
+        - name: granularity
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - day
+              - week
+              - month
+        - name: from
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
