@@ -203,6 +203,7 @@ class TestPetListResource(BaseTestFalconProject):
                     ),
                     "status": 415,
                     "title": (
+                        "Request body validation error: "
                         "Content for the following mimetype not found: "
                         f"{content_type}. "
                         "Valid mimetypes: ['application/json', 'application/x-www-form-urlencoded', 'multipart/form-data', 'text/plain']"
@@ -380,6 +381,7 @@ class TestPetDetailResource:
                     ),
                     "status": 403,
                     "title": (
+                        "SecurityValidationError: "
                         "Security not found. Schemes not valid for any "
                         "requirement: [['petstore_auth']]"
                     ),

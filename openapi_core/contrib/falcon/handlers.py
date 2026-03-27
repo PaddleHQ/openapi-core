@@ -51,12 +51,15 @@ class FalconOpenAPIErrorsHandler:
 
     @classmethod
     def format_openapi_error(cls, error: BaseException) -> Dict[str, Any]:
-        if error.__cause__ is not None:
-            error = error.__cause__
+        cause = error.__cause__ if error.__cause__ is not None else error
+        title = str(error)
+        cause_str = str(cause)
+        if cause is not error and cause_str and cause_str not in title:
+            title = f"{title}: {cause_str}"
         return {
-            "title": str(error),
-            "status": cls.OPENAPI_ERROR_STATUS.get(error.__class__, 400),
-            "type": str(type(error)),
+            "title": title,
+            "status": cls.OPENAPI_ERROR_STATUS.get(cause.__class__, 400),
+            "type": str(type(cause)),
         }
 
     @classmethod

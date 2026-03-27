@@ -69,6 +69,7 @@ class TestFlaskOpenAPIDecorator:
                     ),
                     "status": 415,
                     "title": (
+                        "DataValidationError: "
                         "Content for the following mimetype not found: "
                         "text/html. Valid mimetypes: ['application/json']"
                     ),
@@ -177,6 +178,7 @@ class TestFlaskOpenAPIDecorator:
                     ),
                     "status": 400,
                     "title": (
+                        "Path parameter error: id: "
                         "Failed to cast value to integer type: "
                         "invalidparameter"
                     ),
